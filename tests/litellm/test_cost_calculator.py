@@ -238,3 +238,58 @@ def test_azure_realtime_cost_calculator():
     )
 
     assert cost > 0
+
+
+# Test cases for the new gpt-4.1 series models
+@pytest.mark.parametrize(
+    "model_name, input_tokens, completion_tokens, expected_cost",
+    [
+        # gpt-4.1: input=0.000002, output=0.000008
+        ("gpt-4.1", 100, 50, (100 * 0.000002) + (50 * 0.000008)),
+        ("gpt-4.1-2025-04-14", 100, 50, (100 * 0.000002) + (50 * 0.000008)),
+        # gpt-4.1-mini: input=0.0000004, output=0.0000016
+        ("gpt-4.1-mini", 100, 50, (100 * 0.0000004) + (50 * 0.0000016)),
+        ("gpt-4.1-mini-2025-04-14", 100, 50, (100 * 0.0000004) + (50 * 0.0000016)),
+        # gpt-4.1-nano: input=0.0000001, output=0.0000004
+        ("gpt-4.1-nano", 100, 50, (100 * 0.0000001) + (50 * 0.0000004)),
+        ("gpt-4.1-nano-2025-04-14", 100, 50, (100 * 0.0000001) + (50 * 0.0000004)),
+    ],
+)
+def test_cost_calculator_gpt_4_1_series(
+    model_name, input_tokens, completion_tokens, expected_cost
+):
+    """
+    Tests the cost calculation for the new gpt-4.1 series models.
+    """
+    # Ensure the model cost map is loaded (similar to test_cost_calculator_with_usage)
+    # It's assumed litellm.model_cost is loaded globally or via fixture/setup
+    # If not, add:
+    # os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+    # litellm.model_cost = litellm.get_model_cost_map(url="")
+
+    # Check if model exists in the cost map, skip if not (might happen if JSON wasn't updated yet)
+    if model_name not in litellm.model_cost:
+        pytest.skip(f"Model {model_name} not found in cost map. Skipping test.")
+
+    usage = Usage(prompt_tokens=input_tokens, completion_tokens=completion_tokens)
+    # Create a simple ModelResponse object for testing
+    # We don't need complex PromptTokensDetailsWrapper here as gpt-4.1 series doesn't have separate audio costs yet
+    mr = ModelResponse(usage=usage, model=model_name)
+
+    # Call the cost calculator function
+    # Assuming 'openai' as the provider based on the JSON data provided
+    calculated_cost = response_cost_calculator(
+        response_object=mr,
+        model=model_name,  # Pass the specific model name
+        custom_llm_provider="openai",
+        call_type="completion",  # Assuming a standard completion call
+        optional_params={},
+        cache_hit=None,
+        base_model=None,
+    )
+
+    # Assert the calculated cost matches the expected cost with a small tolerance for floating point inaccuracies
+    assert abs(calculated_cost - expected_cost) < 1e-9, (
+        f"Cost mismatch for {model_name}. "
+        f"Expected: {expected_cost}, Got: {calculated_cost}"
+    )
